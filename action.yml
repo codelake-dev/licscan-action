@@ -1,0 +1,161 @@
+name: 'licscan'
+description: 'Scan a project for dependency licenses, enforce policy, and post a PR comment with the report'
+author: 'codelake Technologies LLC'
+branding:
+  icon: 'shield'
+  color: 'green'
+
+inputs:
+  path:
+    description: 'Project directory to scan'
+    required: false
+    default: '.'
+
+  version:
+    description: 'licscan version to install (e.g. v0.11.0, or "latest")'
+    required: false
+    default: 'latest'
+
+  format:
+    description: 'Output format printed to the workflow log (table, json, html, cyclonedx, spdx, markdown)'
+    required: false
+    default: 'markdown'
+
+  fail-on-violation:
+    description: 'Fail the workflow on a policy deny verdict (CI mode). Set to "false" to scan-and-report only.'
+    required: false
+    default: 'true'
+
+  pr-comment:
+    description: 'When running on a pull_request event, post the markdown report as a PR comment.'
+    required: false
+    default: 'true'
+
+  cra:
+    description: 'Also emit EU CRA evidence (PDF + CycloneDX JSON) into the cra-output directory'
+    required: false
+    default: 'false'
+
+  cra-output:
+    description: 'Output directory for --cra artefacts (relative to the workspace)'
+    required: false
+    default: 'licscan-cra-evidence'
+
+  upload-artifact:
+    description: 'Upload the markdown report (plus CRA artefacts when --cra) as a workflow artifact'
+    required: false
+    default: 'true'
+
+  install-base-url:
+    description: 'Override the install endpoint (defaults to https://install.licscan.dev). Useful for staging / self-hosted mirrors.'
+    required: false
+    default: 'https://install.licscan.dev'
+
+outputs:
+  report-path:
+    description: 'Path to the generated markdown report'
+    value: ${{ steps.scan.outputs.report-path }}
+
+  total:
+    description: 'Total dependencies scanned'
+    value: ${{ steps.scan.outputs.total }}
+
+  denied:
+    description: 'Number of dependencies denied by policy'
+    value: ${{ steps.scan.outputs.denied }}
+
+  warned:
+    description: 'Number of dependencies in the warn list'
+    value: ${{ steps.scan.outputs.warned }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install licscan
+      shell: bash
+      env:
+        LICSCAN_VERSION: ${{ inputs.version }}
+        LICSCAN_BASE_URL: ${{ inputs.install-base-url }}
+        LICSCAN_INSTALL_DIR: ${{ runner.temp }}/licscan-bin
+      run: |
+        set -euo pipefail
+        mkdir -p "$LICSCAN_INSTALL_DIR"
+        echo "$LICSCAN_INSTALL_DIR" >> "$GITHUB_PATH"
+        curl -fsSL "${LICSCAN_BASE_URL}/install.sh" | sh
+        "${LICSCAN_INSTALL_DIR}/licscan" --version
+
+    - name: Run scan
+      id: scan
+      shell: bash
+      env:
+        LICSCAN_PATH: ${{ inputs.path }}
+        LICSCAN_FORMAT: ${{ inputs.format }}
+        LICSCAN_FAIL_ON_VIOLATION: ${{ inputs.fail-on-violation }}
+        LICSCAN_CRA: ${{ inputs.cra }}
+        LICSCAN_CRA_OUTPUT: ${{ inputs.cra-output }}
+      run: |
+        set -euo pipefail
+
+        REPORT_PATH="${RUNNER_TEMP}/licscan-report.md"
+
+        # Always render the markdown report alongside any other format
+        # the user asked for in the log. The artifact + PR comment use
+        # the markdown file; the workflow-log output uses --format.
+        licscan scan "$LICSCAN_PATH" --format markdown > "$REPORT_PATH"
+        echo "report-path=${REPORT_PATH}" >> "$GITHUB_OUTPUT"
+
+        # Echo the chosen format to the workflow log too. If the user
+        # chose markdown, this is the same as the report; otherwise
+        # they see e.g. the table or JSON output inline.
+        if [ "$LICSCAN_FORMAT" != "markdown" ]; then
+          licscan scan "$LICSCAN_PATH" --format "$LICSCAN_FORMAT" || true
+        else
+          cat "$REPORT_PATH"
+        fi
+
+        # JSON pass to extract structured counts for the action outputs.
+        JSON_OUT=$(licscan scan "$LICSCAN_PATH" --format json)
+        TOTAL=$(printf '%s' "$JSON_OUT" | jq -r '.dependencies | length')
+        DENIED=$(printf '%s' "$JSON_OUT" | jq -r '[.dependencies[] | select(.verdict == "deny")] | length')
+        WARNED=$(printf '%s' "$JSON_OUT" | jq -r '[.dependencies[] | select(.verdict == "warn")] | length')
+        echo "total=${TOTAL}"   >> "$GITHUB_OUTPUT"
+        echo "denied=${DENIED}" >> "$GITHUB_OUTPUT"
+        echo "warned=${WARNED}" >> "$GITHUB_OUTPUT"
+
+        # Optionally emit CRA evidence (PDF + CycloneDX) into cra-output.
+        if [ "$LICSCAN_CRA" = "true" ]; then
+          licscan scan "$LICSCAN_PATH" --cra --output "$LICSCAN_CRA_OUTPUT"
+        fi
+
+        # CI gate: re-run with --ci so the deterministic exit code
+        # reflects the policy. We don't use this pass for output to
+        # avoid double-reporting in the log.
+        if [ "$LICSCAN_FAIL_ON_VIOLATION" = "true" ]; then
+          licscan scan "$LICSCAN_PATH" --ci --format json > /dev/null
+        fi
+
+    - name: Post PR comment
+      if: ${{ inputs.pr-comment == 'true' && github.event_name == 'pull_request' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        REPORT_PATH: ${{ steps.scan.outputs.report-path }}
+      run: |
+        set -euo pipefail
+        if [ ! -f "$REPORT_PATH" ]; then
+          echo "::warning::report file not found at $REPORT_PATH — skipping PR comment"
+          exit 0
+        fi
+        gh pr comment "$PR_NUMBER" --body-file "$REPORT_PATH"
+
+    - name: Upload report artifact
+      if: ${{ inputs.upload-artifact == 'true' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: licscan-report
+        path: |
+          ${{ steps.scan.outputs.report-path }}
+          ${{ inputs.cra-output }}/
+        if-no-files-found: ignore
+        retention-days: 90

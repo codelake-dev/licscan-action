@@ -1,0 +1,72 @@
+name: test-action
+
+# Selbsttest: run the action against a tiny fixture project to verify
+# install + scan + output wiring still works end-to-end on the runners.
+# Triggered on push to main + PRs targeting main + manually.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  smoke-test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create fixture project
+        run: |
+          mkdir -p fixture
+          cat > fixture/go.mod <<'EOF'
+          module example.com/fixture
+
+          go 1.22
+
+          require github.com/spf13/cobra v1.10.2
+          EOF
+
+      - name: Run licscan-action against the fixture
+        id: licscan
+        uses: ./
+        with:
+          path: ./fixture
+          fail-on-violation: false       # fixture deps aren't resolved → Unknown verdicts, don't fail the smoke test
+          pr-comment: false              # avoid spamming our own PRs while testing the action
+          upload-artifact: false
+
+      - name: Assert outputs populated
+        run: |
+          set -euo pipefail
+          echo "report-path=${{ steps.licscan.outputs.report-path }}"
+          echo "total=${{ steps.licscan.outputs.total }}"
+          echo "denied=${{ steps.licscan.outputs.denied }}"
+          echo "warned=${{ steps.licscan.outputs.warned }}"
+          test -f "${{ steps.licscan.outputs.report-path }}"
+          test -n "${{ steps.licscan.outputs.total }}"
+
+  yaml-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: yamllint action.yml
+        uses: ibiqlik/action-yamllint@v3
+        with:
+          file_or_dir: action.yml
+          config_data: |
+            extends: default
+            rules:
+              line-length: disable
+              document-start: disable
+              truthy:
+                check-keys: false
