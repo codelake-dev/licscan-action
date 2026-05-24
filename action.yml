@@ -47,9 +47,9 @@ inputs:
     default: 'true'
 
   install-base-url:
-    description: 'Override the install endpoint (defaults to https://install.licscan.dev). Useful for staging / self-hosted mirrors.'
+    description: 'Override the install endpoint (defaults to https://install.codelake.dev). Useful for staging / self-hosted mirrors.'
     required: false
-    default: 'https://install.licscan.dev'
+    default: 'https://install.codelake.dev'
 
 outputs:
   report-path:
@@ -81,7 +81,7 @@ runs:
         set -euo pipefail
         mkdir -p "$LICSCAN_INSTALL_DIR"
         echo "$LICSCAN_INSTALL_DIR" >> "$GITHUB_PATH"
-        curl -fsSL "${LICSCAN_BASE_URL}/install.sh" | sh
+        curl -fsSL "${LICSCAN_BASE_URL}/licscan/install.sh" | sh
         "${LICSCAN_INSTALL_DIR}/licscan" --version
 
     - name: Run scan

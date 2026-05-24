@@ -97,7 +97,7 @@ Both `cra-evidence.pdf` and `cra-sbom.cdx.json` are written to `cra-output/` and
 | `cra` | `false` | Emit EU CRA evidence (PDF + CycloneDX JSON) into `cra-output` |
 | `cra-output` | `licscan-cra-evidence` | Output directory for CRA artefacts |
 | `upload-artifact` | `true` | Upload the markdown report (+ CRA artefacts) as a workflow artifact |
-| `install-base-url` | `https://install.licscan.dev` | Override install endpoint — useful for self-hosted mirrors |
+| `install-base-url` | `https://install.codelake.dev` | Override install endpoint — useful for self-hosted mirrors |
 
 ## Outputs
 
@@ -204,7 +204,7 @@ jobs:
 
 The action is composite (pure YAML + shell, no JS runtime):
 
-1. **Install** — downloads the requested licscan binary from `install.licscan.dev` (Cloudflare R2 mirror) into `$RUNNER_TEMP/licscan-bin`. Cached implicitly per run.
+1. **Install** — downloads the requested licscan binary from `install.codelake.dev/licscan/` (Cloudflare R2 mirror) into `$RUNNER_TEMP/licscan-bin`. Cached implicitly per run.
 2. **Scan** — three passes:
    - `--format markdown` → report file (used for PR comment + artefact)
    - `--format <user-chosen>` → workflow-log output
