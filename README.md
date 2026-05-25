@@ -91,7 +91,7 @@ Both `cra-evidence.pdf` and `cra-sbom.cdx.json` are written to `cra-output/` and
 |---|---|---|
 | `path` | `.` | Project directory to scan |
 | `version` | `latest` | licscan version to install (e.g. `v0.11.0` or `latest`) |
-| `format` | `markdown` | Format printed to the workflow log (`table`, `json`, `html`, `cyclonedx`, `spdx`, `markdown`) |
+| `format` | `table` | Format printed to the workflow log (`table`, `json`, `html`, `cyclonedx`, `spdx`, `markdown`). The markdown PR comment + artefact are produced regardless. |
 | `fail-on-violation` | `true` | Exit non-zero on policy deny (CI mode) |
 | `pr-comment` | `true` | Post the markdown report as a PR comment (only on `pull_request` events) |
 | `cra` | `false` | Emit EU CRA evidence (PDF + CycloneDX JSON) into `cra-output` |

@@ -17,9 +17,9 @@ inputs:
     default: 'latest'
 
   format:
-    description: 'Output format printed to the workflow log (table, json, html, cyclonedx, spdx, markdown)'
+    description: 'Output format printed to the workflow log (table, json, html, cyclonedx, spdx, markdown). The markdown report is always produced separately for the PR comment + workflow artefact regardless of this setting.'
     required: false
-    default: 'markdown'
+    default: 'table'
 
   fail-on-violation:
     description: 'Fail the workflow on a policy deny verdict (CI mode). Set to "false" to scan-and-report only.'
